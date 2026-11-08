@@ -1,0 +1,1064 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cinematic Atom Explorer | 3D Interactive Model</title>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <style>
+    :root {
+      --bg: #050510;
+      --panel: rgba(12, 16, 40, 0.92);
+      --accent: #00e5ff;
+      --proton: #ff4d6d;
+      --neutron: #a0aec0;
+      --electron: #4ade80;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      overflow-x: hidden;
+      min-height: 100vh;
+    }
+    #canvas-container {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+    }
+    canvas { display: block; width: 100%; height: 100%; }
+    .ui {
+      position: relative;
+      z-index: 10;
+      pointer-events: none;
+    }
+    .ui > * { pointer-events: none; }
+    .controls, .panel { pointer-events: auto; }
+    header {
+      padding: 16px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: linear-gradient(180deg, rgba(5,5,16,0.95), transparent);
+    }
+    h1 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      background: linear-gradient(90deg, #00e5ff, #a78bfa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .controls {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    button, .btn {
+      background: rgba(0, 229, 255, 0.15);
+      border: 1px solid rgba(0, 229, 255, 0.4);
+      color: var(--accent);
+      padding: 8px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    button:hover, .btn:hover {
+      background: rgba(0, 229, 255, 0.3);
+      transform: translateY(-1px);
+    }
+    button.active {
+      background: var(--accent);
+      color: #050510;
+    }
+    .main-layout {
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      gap: 20px;
+      padding: 0 20px 20px;
+      max-width: 1400px;
+      margin: 0 auto;
+      min-height: calc(100vh - 80px);
+    }
+    @media (max-width: 900px) {
+      .main-layout { grid-template-columns: 1fr; }
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid rgba(0, 229, 255, 0.2);
+      border-radius: 16px;
+      padding: 20px;
+      backdrop-filter: blur(12px);
+      max-height: calc(100vh - 100px);
+      overflow-y: auto;
+    }
+    .panel h2 {
+      font-size: 1.15rem;
+      margin-bottom: 12px;
+      color: var(--accent);
+    }
+    .panel h3 {
+      font-size: 1rem;
+      margin: 16px 0 8px;
+      color: #c4b5fd;
+    }
+    .panel p, .panel li {
+      font-size: 0.92rem;
+      line-height: 1.55;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+    .panel ul { padding-left: 18px; }
+    .level-toggle {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .particle-card {
+      background: rgba(255,255,255,0.04);
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 12px;
+      border-left: 4px solid;
+    }
+    .particle-card.proton { border-color: var(--proton); }
+    .particle-card.neutron { border-color: var(--neutron); }
+    .particle-card.electron { border-color: var(--electron); }
+    .particle-card h4 {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+      font-size: 1rem;
+    }
+    .dot {
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .dot.proton { background: var(--proton); box-shadow: 0 0 8px var(--proton); }
+    .dot.neutron { background: var(--neutron); }
+    .dot.electron { background: var(--electron); box-shadow: 0 0 8px var(--electron); }
+    .tabs {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .tab {
+      padding: 7px 12px;
+      border-radius: 6px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid transparent;
+      cursor: pointer;
+      font-size: 0.8rem;
+    }
+    .tab.active {
+      border-color: var(--accent);
+      background: rgba(0,229,255,0.15);
+      color: var(--accent);
+    }
+    .section { display: none; }
+    .section.active { display: block; }
+    .game-area {
+      background: rgba(0,0,0,0.3);
+      border-radius: 12px;
+      padding: 16px;
+      margin-top: 12px;
+    }
+    .quiz-q { font-weight: 600; margin-bottom: 10px; color: #fff; }
+    .quiz-options { display: flex; flex-direction: column; gap: 8px; }
+    .quiz-options button {
+      text-align: left;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      color: var(--text);
+    }
+    .quiz-options button.correct { border-color: #4ade80; background: rgba(74,222,128,0.15); }
+    .quiz-options button.wrong { border-color: #f87171; background: rgba(248,113,113,0.15); }
+    .score { font-size: 0.9rem; color: var(--accent); margin-top: 10px; }
+    .build-controls {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin: 10px 0;
+    }
+    .build-controls button { flex: 1; min-width: 90px; }
+    .atom-info {
+      font-size: 0.9rem;
+      background: rgba(0,0,0,0.4);
+      padding: 10px;
+      border-radius: 8px;
+      margin-top: 8px;
+    }
+    .legend {
+      position: fixed;
+      bottom: 16px;
+      left: 16px;
+      background: var(--panel);
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 0.8rem;
+      border: 1px solid rgba(0,229,255,0.2);
+      z-index: 20;
+    }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; margin-right: 12px; }
+    .speak-btn {
+      background: rgba(167,139,250,0.2);
+      border-color: #a78bfa;
+      color: #c4b5fd;
+    }
+    .hint { font-size: 0.8rem; color: #64748b; margin-top: 6px; }
+    .cinematic-title {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      z-index: 5;
+      pointer-events: none;
+      opacity: 1;
+      transition: opacity 1.5s;
+    }
+    .cinematic-title h2 {
+      font-size: 2.5rem;
+      background: linear-gradient(90deg, #00e5ff, #a78bfa, #f472b6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 8px;
+    }
+    .cinematic-title p { color: var(--muted); font-size: 1.1rem; }
+    .hidden { opacity: 0; pointer-events: none; }
+  </style>
+</head>
+<body>
+  <div id="canvas-container"></div>
+
+  <div class="cinematic-title" id="introTitle">
+    <h2>Atom Explorer</h2>
+    <p>Cinematic 3D Journey into the Building Blocks of Matter</p>
+  </div>
+
+  <div class="ui">
+    <header>
+      <h1>⚛️ Atom Explorer</h1>
+      <div class="controls">
+        <button id="btnKids" class="active">Kids (9+)</button>
+        <button id="btnAdvanced">High School / Uni</button>
+        <button id="btnSpeak" class="speak-btn">🔊 Narrate</button>
+        <button id="btnReset">Reset View</button>
+      </div>
+    </header>
+
+    <div class="main-layout">
+      <div style="min-height: 420px;"></div> <!-- space for 3D -->
+
+      <div class="panel">
+        <div class="tabs">
+          <div class="tab active" data-tab="explain">Explain</div>
+          <div class="tab" data-tab="particles">Particles</div>
+          <div class="tab" data-tab="quarks">Quarks</div>
+          <div class="tab" data-tab="games">Games</div>
+          <div class="tab" data-tab="how">How formed</div>
+        </div>
+
+        <!-- EXPLAIN -->
+        <div class="section active" id="sec-explain">
+          <div class="level-toggle">
+            <button id="levelKids" class="active">Simple</button>
+            <button id="levelAdv">Advanced</button>
+          </div>
+
+          <div id="kidsExplain">
+            <h2>What is an Atom?</h2>
+            <p>Everything around you — your desk, the air, your body — is made of tiny building blocks called <strong>atoms</strong>.</p>
+            <p>An atom is like a tiny solar system:</p>
+            <ul>
+              <li>In the middle is the <strong>nucleus</strong> (the sun).</li>
+              <li>Around it zoom tiny <strong>electrons</strong> (like planets).</li>
+            </ul>
+            <p>The nucleus is made of two kinds of particles:</p>
+            <ul>
+              <li><span class="dot proton"></span> <strong>Protons</strong> — positive charge (like + magnets)</li>
+              <li><span class="dot neutron"></span> <strong>Neutrons</strong> — no charge (neutral helpers)</li>
+            </ul>
+            <p>Electrons are negative. Positive and negative attract, so electrons stay near the nucleus.</p>
+            <p>Real electrons don’t travel on neat tracks like planets — they form a fuzzy “cloud”. This model is a simplified picture and <strong>not to scale</strong>: the real nucleus is about 100,000 times smaller than the whole atom!</p>
+            <p class="hint">Drag the 3D model with your mouse to spin it! Scroll to zoom.</p>
+          </div>
+
+          <div id="advExplain" style="display:none;">
+            <h2>Atomic Structure (Bohr Model + Modern Notes)</h2>
+            <p>An atom consists of a dense, positively charged <strong>nucleus</strong> surrounded by a cloud of negatively charged electrons. The nucleus is only about 10⁻⁵ of the atom’s diameter; the rest of the volume is where the electron cloud has non-zero probability density.</p>
+            <p>The nucleus contains:</p>
+            <ul>
+              <li><strong>Protons</strong> (charge +1e, mass ≈ 1.6726 × 10⁻²⁷ kg)</li>
+              <li><strong>Neutrons</strong> (charge 0, mass ≈ 1.6749 × 10⁻²⁷ kg)</li>
+            </ul>
+            <p><strong>Electrons</strong> (charge −1e, mass ≈ 9.109 × 10⁻³¹ kg ≈ 1/1836 of a proton) occupy discrete energy levels (shells).</p>
+            <p>Atomic number (Z) = number of protons → defines the element.<br>
+            Mass number (A) = protons + neutrons.<br>
+            In a neutral atom, electrons = protons.</p>
+            <p><em>Note:</em> The planetary model is useful for visualization and is <strong>not to scale</strong>. In quantum mechanics, electrons exist as probability clouds (orbitals), not fixed paths.</p>
+          </div>
+        </div>
+
+        <!-- PARTICLES -->
+        <div class="section" id="sec-particles">
+          <h2>Subatomic Particles</h2>
+
+          <div class="particle-card proton">
+            <h4><span class="dot proton"></span> Proton</h4>
+            <div id="kidsP">
+              <p>Positive charge (+1). Lives in the nucleus. The number of protons tells us what element the atom is (1 = hydrogen, 6 = carbon, 8 = oxygen…).</p>
+              <p>Made of three even smaller pieces called quarks: two “Up” quarks and one “Down” quark. These quarks are glued tightly together by special particles called <strong>gluons</strong>.</p>
+            </div>
+            <div id="advP" style="display:none;">
+              <p>Charge: +1 e. Rest mass: 938.272 MeV/c². Quark content: uud (two up quarks of charge +2/3 each + one down quark of charge −1/3). Bound by the strong force mediated by gluons. Determines chemical identity (atomic number Z). Note: the quark rest masses account for only ≈1% of the proton’s mass; the rest comes from the energy of the gluon field and quark motion (E = mc²).</p>
+            </div>
+          </div>
+
+          <div class="particle-card neutron">
+            <h4><span class="dot neutron"></span> Neutron</h4>
+            <div id="kidsN">
+              <p>No charge (neutral). Also lives in the nucleus. Helps hold the protons together so they don’t push each other away. Adds mass but does not change the element. Made of one Up quark and two Down quarks, also held by gluons.</p>
+            </div>
+            <div id="advN" style="display:none;">
+              <p>Charge: 0. Rest mass: 939.565 MeV/c². Quark content: udd (one up + two down). Stabilizes the nucleus against electrostatic repulsion of protons via the residual strong force. Free neutrons decay via β⁻ with mean lifetime ≈ 880 s.</p>
+            </div>
+          </div>
+
+          <div class="particle-card electron">
+            <h4><span class="dot electron"></span> Electron</h4>
+            <div id="kidsE">
+              <p>Negative charge (−1). Zooms around the nucleus in shells (energy levels). Almost no mass compared to protons/neutrons. Responsible for chemistry — atoms share or trade electrons to form molecules.</p>
+            </div>
+            <div id="advE" style="display:none;">
+              <p>Charge: −1 e. Rest mass: 0.511 MeV/c². Fundamental lepton (not made of quarks). Occupies atomic orbitals; arrangement determines chemical bonding, spectra, and reactivity. In the Bohr model they occupy circular orbits; in QM they form standing-wave probability distributions.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- QUARKS -->
+        <div class="section" id="sec-quarks">
+          <h2>Quarks, Flavours & Gluons</h2>
+
+          <div id="kidsQ">
+            <p>Protons and neutrons are not the smallest pieces! They are made of even tinier particles called <strong>quarks</strong>.</p>
+            <p>There are 6 different “flavours” (types) of quarks:</p>
+            <ul>
+              <li><strong>Up</strong> and <strong>Down</strong> – the everyday ones that make protons & neutrons</li>
+              <li><strong>Charm</strong> and <strong>Strange</strong> – rarer, heavier</li>
+              <li><strong>Top</strong> and <strong>Bottom</strong> – the heaviest and rarest</li>
+            </ul>
+            <p><strong>How a proton is made:</strong><br>
+            2 Up quarks + 1 Down quark = Proton<br>
+            (Up has charge +2/3, Down has −1/3 → total charge +1)</p>
+            <p><strong>How a neutron is made:</strong><br>
+            1 Up quark + 2 Down quarks = Neutron<br>
+            (total charge 0)</p>
+            <p>The quarks are stuck together by super-strong “glue” particles called <strong>gluons</strong>. Gluons carry the strong force inside each proton and neutron, and a leftover of that glue also holds the whole nucleus together.</p>
+          </div>
+
+          <div id="advQ" style="display:none;">
+            <p>Quarks are elementary fermions that combine to form hadrons. There are six flavours, organised in three generations:</p>
+            <ul>
+              <li><strong>1st generation:</strong> up (u, +2/3 e), down (d, −1/3 e)</li>
+              <li><strong>2nd generation:</strong> charm (c, +2/3 e), strange (s, −1/3 e)</li>
+              <li><strong>3rd generation:</strong> top (t, +2/3 e), bottom (b, −1/3 e)</li>
+            </ul>
+            <p><strong>Proton composition:</strong> uud<br>
+            Charge: (+2/3) + (+2/3) + (−1/3) = +1<br>
+            Baryon number = 1</p>
+            <p><strong>Neutron composition:</strong> udd<br>
+            Charge: (+2/3) + (−1/3) + (−1/3) = 0</p>
+            <p><strong>Gluons</strong> are the gauge bosons of the strong interaction (QCD). They carry colour charge (unlike photons) and can interact with each other. There are 8 types of gluon. The strong force confines quarks inside hadrons (colour confinement) and binds protons and neutrons in the nucleus (residual strong force via meson exchange).</p>
+            <p>Free quarks are never observed; they are always confined in colour-neutral combinations (baryons or mesons).</p>
+          </div>
+        </div>
+
+        <!-- HOW FORMED -->
+        <div class="section" id="sec-how">
+          <h2>How are they formed?</h2>
+          <div id="kidsHow">
+            <p>Right after the Big Bang, the universe was extremely hot. As it cooled:</p>
+            <ul>
+              <li>Tiny quarks joined (with the help of gluons) to make protons and neutrons.</li>
+              <li>Protons and neutrons stuck together into light nuclei (mostly hydrogen and helium).</li>
+              <li>Later, electrons joined the nuclei to make the first atoms.</li>
+            </ul>
+            <p>Heavier atoms (carbon, oxygen, iron…) are made inside stars and during supernova explosions!</p>
+          </div>
+          <div id="advHow" style="display:none;">
+            <p><strong>Quark–hadron transition</strong> (≈10 microseconds after the Big Bang): as the quark–gluon plasma cooled below about 2 × 10¹² K, quarks and gluons became confined into hadrons (protons and neutrons).</p>
+            <p><strong>Big Bang nucleosynthesis</strong> (≈3–20 minutes): protons and neutrons fused into deuterium, helium-3, helium-4 and traces of lithium-7 (and beryllium-7, which decays to Li-7).</p>
+            <p><strong>Stellar nucleosynthesis</strong>: hydrogen fusion → helium → carbon, oxygen, neon… up to the iron peak via successive fusion stages (fusion beyond iron absorbs energy rather than releasing it).</p>
+            <p><strong>Elements heavier than iron</strong> are built by neutron capture: the slow s-process in aging (AGB) stars, and the rapid r-process in supernovae and neutron-star mergers.</p>
+            <p>Electrons were captured by nuclei as the universe cooled (~380 000 years after Big Bang → recombination era → first neutral atoms).</p>
+          </div>
+        </div>
+
+        <!-- GAMES -->
+        <div class="section" id="sec-games">
+          <h2>Games</h2>
+          <button id="resetAllGames" style="width:100%; margin-bottom:16px; background:rgba(248,113,113,0.2); border-color:#f87171; color:#fca5a5;">🔄 Reset All Games</button>
+
+          <h3>1. Particle Quiz</h3>
+          <div class="game-area" id="quizArea">
+            <div class="quiz-q" id="quizQ">Loading…</div>
+            <div class="quiz-options" id="quizOpts"></div>
+            <div class="score" id="quizScore">Score: 0 / 0</div>
+            <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
+              <button id="nextQ">Next Question</button>
+              <button id="clearQuiz" style="background:rgba(248,113,113,0.15); border-color:#f87171; color:#fca5a5;">Clear / Start Again</button>
+            </div>
+          </div>
+
+          <h3>2. Build an Atom</h3>
+          <div class="game-area">
+            <p>Add protons, neutrons and electrons to build a stable neutral atom.</p>
+            <div class="build-controls">
+              <button id="addP">+ Proton</button>
+              <button id="addN">+ Neutron</button>
+              <button id="addE">+ Electron</button>
+              <button id="clearAtom">Clear</button>
+            </div>
+            <div class="atom-info" id="buildInfo">
+              Protons: 0 | Neutrons: 0 | Electrons: 0<br>
+              Element: (none) | Charge: 0
+            </div>
+            <p class="hint">Try building Hydrogen (1p, 0n, 1e) or Helium (2p, 2n, 2e)!</p>
+          </div>
+
+          <h3>3. Quick Match</h3>
+          <div class="game-area">
+            <p>Match each item to its property:</p>
+            <div id="matchGame"></div>
+            <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
+              <button id="checkMatch">Check Answers</button>
+              <button id="clearMatch" style="background:rgba(248,113,113,0.15); border-color:#f87171; color:#fca5a5;">Clear / Start Again</button>
+            </div>
+            <div id="matchResult" class="score"></div>
+          </div>
+
+          <h3>4. Build a Proton / Neutron (Quark Game)</h3>
+          <div class="game-area">
+            <p>Select the correct quarks to form a proton or neutron.</p>
+            <div style="display:flex; gap:8px; margin:10px 0; flex-wrap:wrap;">
+              <button id="targetProton" class="active">Make Proton</button>
+              <button id="targetNeutron">Make Neutron</button>
+            </div>
+            <div class="build-controls">
+              <button id="addUp">+ Up quark</button>
+              <button id="addDown">+ Down quark</button>
+              <button id="clearQuarks">Clear</button>
+            </div>
+            <div class="atom-info" id="quarkInfo">
+              Up: 0 | Down: 0<br>
+              Target: Proton (uud) | Status: —
+            </div>
+            <p class="hint">Proton needs 2 Up + 1 Down. Neutron needs 1 Up + 2 Down.</p>
+          </div>
+
+          <h3>5. True or False Challenge</h3>
+          <div class="game-area">
+            <div class="quiz-q" id="tfQ">Loading…</div>
+            <div style="display:flex; gap:10px; margin-top:10px;">
+              <button id="tfTrue">True</button>
+              <button id="tfFalse">False</button>
+            </div>
+            <div class="score" id="tfScore">Score: 0 / 0</div>
+            <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
+              <button id="nextTF">Next Statement</button>
+              <button id="clearTF" style="background:rgba(248,113,113,0.15); border-color:#f87171; color:#fca5a5;">Clear / Start Again</button>
+            </div>
+          </div>
+
+          <h3>6. Particle Memory Match</h3>
+          <div class="game-area">
+            <p>Flip cards to match each particle with its charge or role.</p>
+            <div id="memoryBoard" style="display:grid; grid-template-columns: repeat(4, 1fr); gap:8px; margin-top:10px;"></div>
+            <div class="score" id="memoryScore" style="margin-top:10px;">Matches: 0 / 4</div>
+            <button id="resetMemory" style="margin-top:8px;">Reset Board</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <span><span class="dot proton"></span> Proton</span>
+    <span><span class="dot neutron"></span> Neutron</span>
+    <span><span class="dot electron"></span> Electron</span>
+  </div>
+
+  <script>
+    // ========== THREE.JS SCENE ==========
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x050510);
+    scene.fog = new THREE.FogExp2(0x050510, 0.012);
+
+    const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 8, 28);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    container.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.minDistance = 8;
+    controls.maxDistance = 60;
+
+    // Lights
+    const ambient = new THREE.AmbientLight(0x404060, 0.6);
+    scene.add(ambient);
+    const point = new THREE.PointLight(0x00e5ff, 1.2, 100);
+    point.position.set(15, 20, 15);
+    scene.add(point);
+    const point2 = new THREE.PointLight(0xa78bfa, 0.8, 80);
+    point2.position.set(-15, -10, 10);
+    scene.add(point2);
+
+    // Atom group
+    const atomGroup = new THREE.Group();
+    scene.add(atomGroup);
+
+    // Nucleus
+    const nucleusGroup = new THREE.Group();
+    atomGroup.add(nucleusGroup);
+
+    function createParticle(radius, color, emissive) {
+      const geo = new THREE.SphereGeometry(radius, 24, 24);
+      const mat = new THREE.MeshStandardMaterial({
+        color,
+        emissive,
+        emissiveIntensity: 0.35,
+        metalness: 0.2,
+        roughness: 0.4
+      });
+      return new THREE.Mesh(geo, mat);
+    }
+
+    // Initial simple nucleus (visual)
+    const protons = [];
+    const neutrons = [];
+    const electrons = [];
+    const electronOrbits = [];
+
+    function disposeObject(obj) {
+      obj.traverse(o => {
+        if (o.geometry) o.geometry.dispose();
+        if (o.material) o.material.dispose();
+      });
+    }
+
+    // Subtle glow around nucleus (lives in atomGroup so clearing nucleons never removes it)
+    const glowGeo = new THREE.SphereGeometry(3.2, 32, 32);
+    const glowMat = new THREE.MeshBasicMaterial({
+      color: 0xff6b8a,
+      transparent: true,
+      opacity: 0.08
+    });
+    const glow = new THREE.Mesh(glowGeo, glowMat);
+    atomGroup.add(glow);
+
+    function clearNucleus() {
+      while (nucleusGroup.children.length) {
+        const c = nucleusGroup.children[0];
+        nucleusGroup.remove(c);
+        disposeObject(c);
+      }
+      protons.length = 0;
+      neutrons.length = 0;
+    }
+
+    function addNucleusParticles(pCount, nCount) {
+      clearNucleus();
+      const total = pCount + nCount;
+      glow.visible = total > 0;
+      if (total === 0) return;
+      const r = 0.55;
+      // Cluster radius grows with particle count so nucleons never overlap (surface spacing ~ constant)
+      const R = total === 1 ? 0 : 0.6 * Math.sqrt(total);
+      glow.scale.setScalar((R + 1.4) / 3.2);
+      // Fibonacci sphere distribution; protons and neutrons are interleaved (mixed), as in a real nucleus
+      for (let i = 0; i < total; i++) {
+        const y = total === 1 ? 0 : 1 - (i / (total - 1)) * 2;
+        const radiusAtY = Math.sqrt(1 - y * y);
+        const theta = Math.PI * (3 - Math.sqrt(5)) * i;
+        const x = Math.cos(theta) * radiusAtY;
+        const z = Math.sin(theta) * radiusAtY;
+        const isProton = Math.floor((i + 1) * pCount / total) > Math.floor(i * pCount / total);
+        const mesh = createParticle(r, isProton ? 0xff4d6d : 0xa0aec0, isProton ? 0xff2a4a : 0x64748b);
+        mesh.position.set(x * R, y * R, z * R);
+        nucleusGroup.add(mesh);
+        if (isProton) protons.push(mesh); else neutrons.push(mesh);
+      }
+    }
+
+    // Electron shells (visual Bohr)
+    function createElectronShell(radius, count, speed) {
+      const shell = new THREE.Group();
+      const orbitGeo = new THREE.TorusGeometry(radius, 0.03, 8, 64);
+      const orbitMat = new THREE.MeshBasicMaterial({ color: 0x1e3a5f, transparent: true, opacity: 0.35 });
+      const orbit = new THREE.Mesh(orbitGeo, orbitMat);
+      orbit.rotation.x = Math.PI / 2;
+      shell.add(orbit);
+
+      for (let i = 0; i < count; i++) {
+        const e = createParticle(0.28, 0x4ade80, 0x22c55e);
+        const angle = (i / count) * Math.PI * 2;
+        e.userData = { angle, radius, speed: speed * (0.8 + Math.random() * 0.4) };
+        e.position.set(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
+        shell.add(e);
+        electrons.push(e);
+      }
+      atomGroup.add(shell);
+      electronOrbits.push(shell);
+      return shell;
+    }
+
+    // Fill shells K, L, M, N with capacities 2, 8, 8, 18 (simplified aufbau for Z <= 20)
+    const SHELL_CAP = [2, 8, 8, 18];
+    function rebuildElectrons(n) {
+      electronOrbits.forEach(s => { atomGroup.remove(s); disposeObject(s); });
+      electronOrbits.length = 0;
+      electrons.length = 0;
+      let left = n, i = 0;
+      while (left > 0 && i < SHELL_CAP.length) {
+        const c = Math.min(SHELL_CAP[i], left);
+        createElectronShell(6.5 + 3.5 * i, c, 0.025 / (1 + i * 0.35));
+        left -= c;
+        i++;
+      }
+    }
+
+    // Default view: Carbon-12 (6p, 6n, 6e -> shells 2,4)
+    addNucleusParticles(6, 6);
+    rebuildElectrons(6);
+
+    // Stars background
+    const starGeo = new THREE.BufferGeometry();
+    const starCount = 1200;
+    const positions = new Float32Array(starCount * 3);
+    for (let i = 0; i < starCount * 3; i++) {
+      positions[i] = (Math.random() - 0.5) * 200;
+    }
+    starGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.15, transparent: true, opacity: 0.7 });
+    const stars = new THREE.Points(starGeo, starMat);
+    scene.add(stars);
+
+    // Animation
+    let time = 0;
+    function animate() {
+      requestAnimationFrame(animate);
+      time += 0.016;
+      nucleusGroup.rotation.y += 0.004;
+      nucleusGroup.rotation.x = Math.sin(time * 0.3) * 0.08;
+
+      electrons.forEach(e => {
+        e.userData.angle += e.userData.speed;
+        e.position.x = Math.cos(e.userData.angle) * e.userData.radius;
+        e.position.z = Math.sin(e.userData.angle) * e.userData.radius;
+        e.position.y = Math.sin(e.userData.angle * 2) * 0.4;
+      });
+
+      stars.rotation.y += 0.0003;
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // Intro fade
+    setTimeout(() => {
+      document.getElementById('introTitle').classList.add('hidden');
+    }, 2800);
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // ========== UI LOGIC ==========
+    let isKids = true;
+
+    function setLevel(kids) {
+      isKids = kids;
+      document.getElementById('kidsExplain').style.display = kids ? 'block' : 'none';
+      document.getElementById('advExplain').style.display = kids ? 'none' : 'block';
+      document.getElementById('kidsP').style.display = kids ? 'block' : 'none';
+      document.getElementById('advP').style.display = kids ? 'none' : 'block';
+      document.getElementById('kidsN').style.display = kids ? 'block' : 'none';
+      document.getElementById('advN').style.display = kids ? 'none' : 'block';
+      document.getElementById('kidsE').style.display = kids ? 'block' : 'none';
+      document.getElementById('advE').style.display = kids ? 'none' : 'block';
+      document.getElementById('kidsHow').style.display = kids ? 'block' : 'none';
+      document.getElementById('advHow').style.display = kids ? 'none' : 'block';
+      document.getElementById('kidsQ').style.display = kids ? 'block' : 'none';
+      document.getElementById('advQ').style.display = kids ? 'none' : 'block';
+
+      document.getElementById('btnKids').classList.toggle('active', kids);
+      document.getElementById('btnAdvanced').classList.toggle('active', !kids);
+      document.getElementById('levelKids').classList.toggle('active', kids);
+      document.getElementById('levelAdv').classList.toggle('active', !kids);
+    }
+
+    document.getElementById('btnKids').onclick = () => setLevel(true);
+    document.getElementById('btnAdvanced').onclick = () => setLevel(false);
+    document.getElementById('levelKids').onclick = () => setLevel(true);
+    document.getElementById('levelAdv').onclick = () => setLevel(false);
+
+    // Tabs
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.onclick = () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById('sec-' + tab.dataset.tab).classList.add('active');
+      };
+    });
+
+    // Reset camera
+    document.getElementById('btnReset').onclick = () => {
+      camera.position.set(0, 8, 28);
+      controls.target.set(0, 0, 0);
+    };
+
+    // Speech
+    document.getElementById('btnSpeak').onclick = () => {
+      if (!window.speechSynthesis) return alert('Speech not supported in this browser.');
+      window.speechSynthesis.cancel();
+      const text = isKids
+        ? "An atom is like a tiny solar system. In the middle is the nucleus made of protons and neutrons. Electrons fly around it. Protons are positive, electrons are negative, and neutrons have no charge. Protons and neutrons are themselves made of even smaller pieces called quarks, held together by gluons."
+        : "An atom has a dense nucleus containing protons and neutrons, surrounded by electrons in discrete energy levels. Protons consist of two up quarks and one down quark. Neutrons consist of one up and two down quarks. Gluons mediate the strong force that binds the quarks and holds the nucleus together. There are six quark flavours.";
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate = 0.95;
+      window.speechSynthesis.speak(u);
+    };
+
+    // ========== QUIZ ==========
+    const quizData = [
+      { q: "Which particle has a positive charge?", opts: ["Electron", "Proton", "Neutron"], a: 1 },
+      { q: "Where do protons and neutrons live?", opts: ["In shells around the atom", "In the nucleus", "Outside the atom"], a: 1 },
+      { q: "Which particle is much, much lighter than the other two?", opts: ["Proton", "Neutron", "Electron"], a: 2 },
+      { q: "What does the number of protons tell us?", opts: ["The mass of the atom", "Which element it is", "How many shells it has"], a: 1 },
+      { q: "What charge does a neutron have?", opts: ["+1", "−1", "0 (none)"], a: 2 },
+      { q: "In a neutral atom, number of electrons equals…", opts: ["Number of neutrons", "Number of protons", "Mass number"], a: 1 },
+      { q: "A proton is made of which quarks?", opts: ["2 Up + 1 Down", "1 Up + 2 Down", "3 Up"], a: 0 },
+      { q: "What holds quarks together inside a proton?", opts: ["Gravity", "Gluons (strong force)", "Electromagnetism"], a: 1 },
+      { q: "How many flavours of quarks are there?", opts: ["3", "4", "6"], a: 2 },
+      { q: "What is the charge of an Up quark?", opts: ["+2/3", "−1/3", "+1"], a: 0 }
+    ];
+    let qIndex = 0, score = 0, answered = 0;
+
+    function showQuestion() {
+      const d = quizData[qIndex % quizData.length];
+      document.getElementById('quizQ').textContent = d.q;
+      const opts = document.getElementById('quizOpts');
+      opts.innerHTML = '';
+      d.opts.forEach((o, i) => {
+        const b = document.createElement('button');
+        b.textContent = o;
+        b.onclick = () => {
+          if (b.disabled) return;
+          answered++;
+          if (i === d.a) { b.classList.add('correct'); score++; }
+          else { b.classList.add('wrong'); opts.children[d.a].classList.add('correct'); }
+          Array.from(opts.children).forEach(btn => btn.disabled = true);
+          document.getElementById('quizScore').textContent = `Score: ${score} / ${answered}`;
+        };
+        opts.appendChild(b);
+      });
+    }
+    document.getElementById('nextQ').onclick = () => { qIndex++; showQuestion(); };
+    document.getElementById('clearQuiz').onclick = () => {
+      qIndex = 0;
+      score = 0;
+      answered = 0;
+      document.getElementById('quizScore').textContent = 'Score: 0 / 0';
+      showQuestion();
+    };
+    showQuestion();
+
+    // ========== BUILD ATOM ==========
+    let bp = 0, bn = 0, be = 0;
+    // [name, symbol, neutron counts of stable isotopes]
+    const ELEMENTS = [null,
+      ['Hydrogen','H',[0,1]], ['Helium','He',[1,2]], ['Lithium','Li',[3,4]], ['Beryllium','Be',[5]],
+      ['Boron','B',[5,6]], ['Carbon','C',[6,7]], ['Nitrogen','N',[7,8]], ['Oxygen','O',[8,9,10]],
+      ['Fluorine','F',[10]], ['Neon','Ne',[10,11,12]], ['Sodium','Na',[12]], ['Magnesium','Mg',[12,13,14]],
+      ['Aluminium','Al',[14]], ['Silicon','Si',[14,15,16]], ['Phosphorus','P',[16]], ['Sulfur','S',[16,17,18,20]],
+      ['Chlorine','Cl',[18,20]], ['Argon','Ar',[18,20,22]], ['Potassium','K',[20,22]], ['Calcium','Ca',[20,22,23,24,26]]
+    ];
+
+    function updateBuild() {
+      const charge = bp - be;
+      const el = ELEMENTS[bp];
+      const name = bp === 0 ? '(none)' : (el ? `${el[0]} (${el[1]})` : `Element Z=${bp}`);
+      let isoLine = '';
+      let stable = false;
+      if (bp > 0 && el) {
+        stable = el[2].includes(bn);
+        isoLine = `<br>Isotope: ${el[1]}-${bp + bn} — ` + (stable ? 'stable' : 'not stable (radioactive or does not exist)');
+      }
+      let chargeNote = '';
+      if (bp > 0 && charge === 0) chargeNote = ' ✓ Neutral';
+      else if (bp > 0 || be > 0) chargeNote = charge === 0 ? '' : ' (ion)';
+      const win = (bp > 0 && charge === 0 && stable) ? '<br>🎉 A stable, neutral atom!' : '';
+      document.getElementById('buildInfo').innerHTML =
+        `Protons: ${bp} | Neutrons: ${bn} | Electrons: ${be}<br>
+         Element: ${name} | Net charge: ${charge > 0 ? '+' : ''}${charge}${chargeNote}${isoLine}${win}`;
+      // Update 3D model: nucleus AND electron shells follow the counts (empty -> back to default carbon view)
+      if (bp === 0 && bn === 0 && be === 0) {
+        addNucleusParticles(6, 6);
+        rebuildElectrons(6);
+      } else {
+        addNucleusParticles(bp, bn);
+        rebuildElectrons(be);
+      }
+    }
+    document.getElementById('addP').onclick = () => { bp = Math.min(bp + 1, 20); updateBuild(); };
+    document.getElementById('addN').onclick = () => { bn = Math.min(bn + 1, 30); updateBuild(); };
+    document.getElementById('addE').onclick = () => { be = Math.min(be + 1, 20); updateBuild(); };
+    document.getElementById('clearAtom').onclick = () => { bp = bn = be = 0; updateBuild(); };
+
+    // ========== MATCH GAME ==========
+    const matchPairs = [
+      { particle: 'Proton', prop: 'Positive charge (+1)' },
+      { particle: 'Neutron', prop: 'No charge (0)' },
+      { particle: 'Electron', prop: 'Negative charge (−1)' },
+      { particle: 'Nucleus', prop: 'Contains most of the mass' }
+    ];
+    function setupMatch() {
+      const area = document.getElementById('matchGame');
+      area.innerHTML = '';
+      const shuffledProps = matchPairs.map(p => p.prop).sort(() => Math.random() - 0.5);
+      matchPairs.forEach((pair, i) => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:8px;';
+        row.innerHTML = `<span style="min-width:90px;font-weight:600;">${pair.particle}</span>
+          <select data-idx="${i}" style="flex:1;padding:6px;border-radius:6px;background:#1e293b;color:#e2e8f0;border:1px solid #334155;">
+            <option value="">— choose —</option>
+            ${shuffledProps.map(p => `<option value="${p}">${p}</option>`).join('')}
+          </select>`;
+        area.appendChild(row);
+      });
+    }
+    setupMatch();
+    document.getElementById('checkMatch').onclick = () => {
+      let correct = 0;
+      document.querySelectorAll('#matchGame select').forEach(sel => {
+        const idx = +sel.dataset.idx;
+        if (sel.value === matchPairs[idx].prop) correct++;
+      });
+      document.getElementById('matchResult').textContent = `You got ${correct} / ${matchPairs.length} correct!`;
+    };
+    document.getElementById('clearMatch').onclick = () => {
+      setupMatch();
+      document.getElementById('matchResult').textContent = '';
+    };
+
+    // ========== QUARK BUILDER ==========
+    let upCount = 0, downCount = 0, targetIsProton = true;
+
+    function updateQuarkInfo() {
+      const statusEl = document.getElementById('quarkInfo');
+      const needed = targetIsProton ? 'Proton (uud = 2 Up + 1 Down)' : 'Neutron (udd = 1 Up + 2 Down)';
+      let status = '—';
+      if (targetIsProton && upCount === 2 && downCount === 1) status = '✓ Correct proton!';
+      else if (!targetIsProton && upCount === 1 && downCount === 2) status = '✓ Correct neutron!';
+      else if (upCount + downCount > 0) {
+        const tu = targetIsProton ? 2 : 1, td = targetIsProton ? 1 : 2;
+        status = (upCount > tu || downCount > td) ? 'Too many — press Clear and try again' : 'Keep adding…';
+      }
+      statusEl.innerHTML = `Up: ${upCount} | Down: ${downCount}<br>Target: ${needed}<br>Status: ${status}`;
+    }
+
+    document.getElementById('targetProton').onclick = () => {
+      targetIsProton = true;
+      document.getElementById('targetProton').classList.add('active');
+      document.getElementById('targetNeutron').classList.remove('active');
+      updateQuarkInfo();
+    };
+    document.getElementById('targetNeutron').onclick = () => {
+      targetIsProton = false;
+      document.getElementById('targetNeutron').classList.add('active');
+      document.getElementById('targetProton').classList.remove('active');
+      updateQuarkInfo();
+    };
+    document.getElementById('addUp').onclick = () => { upCount = Math.min(upCount + 1, 3); updateQuarkInfo(); };
+    document.getElementById('addDown').onclick = () => { downCount = Math.min(downCount + 1, 3); updateQuarkInfo(); };
+    document.getElementById('clearQuarks').onclick = () => { upCount = 0; downCount = 0; updateQuarkInfo(); };
+    updateQuarkInfo();
+
+    // ========== TRUE / FALSE ==========
+    const tfData = [
+      { s: "A proton is made of two Up quarks and one Down quark.", a: true },
+      { s: "Gluons carry the electromagnetic force.", a: false },
+      { s: "There are six flavours of quarks.", a: true },
+      { s: "Neutrons have a positive charge.", a: false },
+      { s: "The strong force holds the nucleus together.", a: true },
+      { s: "Electrons are made of quarks.", a: false },
+      { s: "An Up quark has charge +2/3.", a: true },
+      { s: "A free quark can be found alone in nature.", a: false },
+      { s: "The top quark is the heaviest quark flavour.", a: true },
+      { s: "Protons and neutrons are elementary particles.", a: false }
+    ];
+    let tfIndex = 0, tfScore = 0, tfAnswered = 0, tfLocked = false;
+
+    function showTF() {
+      tfLocked = false;
+      document.getElementById('tfQ').textContent = tfData[tfIndex % tfData.length].s;
+      document.getElementById('tfScore').textContent = `Score: ${tfScore} / ${tfAnswered}`;
+      document.getElementById('tfTrue').disabled = false;
+      document.getElementById('tfFalse').disabled = false;
+    }
+    function answerTF(isTrue) {
+      if (tfLocked) return;           // one answer per statement
+      tfLocked = true;
+      const truth = tfData[tfIndex % tfData.length].a;
+      const correct = truth === isTrue;
+      tfAnswered++;
+      if (correct) tfScore++;
+      document.getElementById('tfTrue').disabled = true;
+      document.getElementById('tfFalse').disabled = true;
+      document.getElementById('tfScore').textContent =
+        `Score: ${tfScore} / ${tfAnswered}` + (correct ? ' ✓ Correct!' : ` ✗ The answer is ${truth ? 'True' : 'False'}`);
+    }
+    document.getElementById('tfTrue').onclick = () => answerTF(true);
+    document.getElementById('tfFalse').onclick = () => answerTF(false);
+    document.getElementById('nextTF').onclick = () => { tfIndex++; showTF(); };
+    document.getElementById('clearTF').onclick = () => {
+      tfIndex = 0;
+      tfScore = 0;
+      tfAnswered = 0;
+      showTF();
+    };
+    showTF();
+
+    // ========== MEMORY MATCH ==========
+    const memoryPairs = [
+      { id: 1, label: 'Proton', pair: '+1 charge' },
+      { id: 2, label: 'Neutron', pair: '0 charge' },
+      { id: 3, label: 'Electron', pair: '−1 charge' },
+      { id: 4, label: 'Gluon', pair: 'Holds quarks' }
+    ];
+    let memoryCards = [];
+    let flipped = [];
+    let matched = 0;
+    let lockBoard = false;
+
+    function buildMemory() {
+      const board = document.getElementById('memoryBoard');
+      board.innerHTML = '';
+      matched = 0;
+      flipped = [];
+      lockBoard = false;
+      document.getElementById('memoryScore').textContent = 'Matches: 0 / 4';
+
+      const items = [];
+      memoryPairs.forEach(p => {
+        items.push({ id: p.id, text: p.label });
+        items.push({ id: p.id, text: p.pair });
+      });
+      // shuffle
+      for (let i = items.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [items[i], items[j]] = [items[j], items[i]];
+      }
+
+      memoryCards = items.map((item, idx) => {
+        const card = document.createElement('button');
+        card.style.cssText = 'height:52px;font-size:0.75rem;background:rgba(0,229,255,0.12);border:1px solid rgba(0,229,255,0.3);border-radius:8px;color:#e2e8f0;cursor:pointer;';
+        card.textContent = '?';
+        card.dataset.id = item.id;
+        card.dataset.text = item.text;
+        card.dataset.idx = idx;
+        card.onclick = () => flipCard(card);
+        board.appendChild(card);
+        return card;
+      });
+    }
+
+    function flipCard(card) {
+      if (lockBoard || card.classList.contains('matched') || flipped.includes(card)) return;
+      card.textContent = card.dataset.text;
+      card.style.background = 'rgba(167,139,250,0.25)';
+      flipped.push(card);
+      if (flipped.length === 2) {
+        lockBoard = true;
+        if (flipped[0].dataset.id === flipped[1].dataset.id) {
+          flipped[0].classList.add('matched');
+          flipped[1].classList.add('matched');
+          flipped[0].style.background = 'rgba(74,222,128,0.25)';
+          flipped[1].style.background = 'rgba(74,222,128,0.25)';
+          matched++;
+          document.getElementById('memoryScore').textContent = `Matches: ${matched} / 4` + (matched === 4 ? ' 🎉 All matched!' : '');
+          flipped = [];
+          lockBoard = false;
+        } else {
+          const [a, b] = flipped;
+          flipped = [];
+          setTimeout(() => {
+            if (!a.isConnected) return;   // board was reset meanwhile
+            a.textContent = '?';
+            b.textContent = '?';
+            a.style.background = 'rgba(0,229,255,0.12)';
+            b.style.background = 'rgba(0,229,255,0.12)';
+            lockBoard = false;
+          }, 700);
+        }
+      }
+    }
+    document.getElementById('resetMemory').onclick = buildMemory;
+    buildMemory();
+
+    // ========== RESET ALL GAMES ==========
+    document.getElementById('resetAllGames').onclick = () => {
+      // 1. Quiz
+      qIndex = 0;
+      score = 0;
+      answered = 0;
+      document.getElementById('quizScore').textContent = 'Score: 0 / 0';
+      showQuestion();
+
+      // 2. Build Atom
+      bp = 0; bn = 0; be = 0;
+      updateBuild();
+
+      // 3. Quick Match
+      setupMatch();
+      document.getElementById('matchResult').textContent = '';
+
+      // 4. Quark Builder
+      upCount = 0;
+      downCount = 0;
+      targetIsProton = true;
+      document.getElementById('targetProton').classList.add('active');
+      document.getElementById('targetNeutron').classList.remove('active');
+      updateQuarkInfo();
+
+      // 5. True / False
+      tfIndex = 0;
+      tfScore = 0;
+      tfAnswered = 0;
+      showTF();
+
+      // 6. Memory Match
+      buildMemory();
+    };
+  </script>
+</body>
+</html>
